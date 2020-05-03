@@ -38,14 +38,13 @@ class Amphp
                                                  ->build();
 
         $this->fs = filesystem();
+        $this->queue = new \SplQueue();
     }
 
     public function run()
     {
-        Loop::run(function () {
-            yield $this->initUrls();
-            yield $this->processRequests();
-        });
+        yield call(fn() =>$this->initUrls());
+        yield call(fn() => $this->processRequests());
     }
 
     private function initUrls()
@@ -60,11 +59,10 @@ class Amphp
 
     private function processRequests()
     {
-        $maxPoolSize = 10;
         /** @var Promise[] $pool */
         $pool = [];
         while (!$this->queue->isEmpty()) {
-            if (count($pool) < $maxPoolSize) {
+            if (count($pool) < $this->concurrency) {
                 // fill pool with work
                 $promise = $this->processRequest($this->queue->pop());
 
@@ -76,6 +74,7 @@ class Amphp
             }
             // wait when some task will be accomplished
             [$errors, $values] = yield Promise\some($pool);
+            $pool= [];
         }
     }
 
@@ -99,19 +98,5 @@ class Amphp
         $title = $crawler->filterXPath('//title')->text("No title");
         $this->fs->open($this->tempDir . '/ok.txt', 'a')
                  ->onResolve(fn($err, File $file) => $file->end("$url,$title" . PHP_EOL));
-    }
-
-    private function urlGenerator()
-    {
-        $f = fopen($this->urlPath, 'r');
-        try {
-            $num = 0;
-            while (($line = fgets($f)) && $num < $this->batchSize) {
-                $num++;
-                yield \trim($line);
-            }
-        } finally {
-            fclose($f);
-        }
     }
 }
