@@ -63,22 +63,20 @@ class Amphp
         $pool = [];
         while (!$this->queue->isEmpty()) {
             if (count($pool) < $this->concurrency) {
-                // fill pool with work
-                $promise = $this->processRequest($this->queue->pop());
-
-                $promise->onResolve(function () use (&$pool) {
-                    unset($pool[array_search($this, $pool, true)]);
+                $url = $this->queue->pop();
+                $promise = $this->processRequest($url);
+                $promise->onResolve(function () use (&$pool, &$url) {
+                    unset($pool[$url]);
                 });
-                $pool[] = $promise;
+                $pool[$url] = $promise;
                 continue;
             }
             // wait when some task will be accomplished
             [$errors, $values] = yield Promise\some($pool);
-            $pool= [];
         }
     }
 
-    private function processRequest($url)
+    private function processRequest($url):Promise
     {
         return call(function () use ($url) {
             try {
@@ -98,5 +96,6 @@ class Amphp
         $title = $crawler->filterXPath('//title')->text("No title");
         $this->fs->open($this->tempDir . '/ok.txt', 'a')
                  ->onResolve(fn($err, File $file) => $file->end("$url,$title" . PHP_EOL));
+        return $url;
     }
 }
