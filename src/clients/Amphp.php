@@ -4,20 +4,15 @@ namespace app\clients;
 
 
 use Amp\File\File;
+use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Interceptor\SetRequestTimeout;
 use Amp\Http\Client\Request;
-use Amp\LazyPromise;
 use Amp\Loop;
 use Amp\Promise;
-use Amp\TimeoutCancellationToken;
 use Symfony\Component\DomCrawler\Crawler;
 use function Amp\call;
 use function Amp\File\filesystem;
-use function Amp\Promise\all;
-use function Amp\Promise\any;
-use function Amp\Promise\some;
-use function Amp\Promise\wait;
 use const PHP_EOL;
 
 class Amphp
@@ -27,7 +22,7 @@ class Amphp
     private string $urlPath;
     private string $tempDir;
 
-    private \Amp\Http\Client\HttpClient $client;
+    private HttpClient $client;
     private \Amp\File\Driver $fs;
     private \SplQueue $queue;
 
@@ -55,10 +50,6 @@ class Amphp
 
     private function initUrls()
     {
-
-//        foreach ($this->urlGenerator() as $url){
-//            $this->urls[] = $url;
-//        }
         $data = yield $this->fs->get($this->urlPath);
         $urls = \array_slice(\explode(PHP_EOL, $data), 0, $this->batchSize);
         foreach ($urls as $url) {
@@ -97,9 +88,7 @@ class Amphp
                 yield call(fn() => $this->processHtml($body, $url));
             } catch (\Throwable $e) {
                 $this->fs->open($this->tempDir . '/bad.txt', 'a')
-                    ->onResolve(function ($err, File $file) use ($url) {
-                        $file->end("$url" . PHP_EOL);
-                    });
+                    ->onResolve(fn($err, File $file) => $file->end("$url" . PHP_EOL));
             }
         });
     }
@@ -108,9 +97,8 @@ class Amphp
     {
         $crawler = new Crawler($html);
         $title = $crawler->filterXPath('//title')->text("No title");
-        $this->fs->open($this->tempDir . '/ok.txt', 'a')->onResolve(function($err, File $file) use($url, $title) {
-            $file->end("$url,$title" . PHP_EOL);
-        });
+        $this->fs->open($this->tempDir . '/ok.txt', 'a')
+                 ->onResolve(fn($err, File $file) => $file->end("$url,$title" . PHP_EOL));
     }
 
     private function urlGenerator()
